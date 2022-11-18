@@ -16,6 +16,7 @@ ADAFRUIT_IO_USERNAME = 'curtishallman'
 # Create an instance of the REST client.
 aio = Client(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
 
+
 try:  # if we have a 'temperature' feed
     temperature = aio.feeds('temperature')
 except RequestError:  # create a temperature feed
@@ -46,8 +47,15 @@ dht_sensor = adafruit_dht.DHT11(board.D4, use_pulseio=False)
 BG_PIN = 17
 GPIO.setup(BG_PIN, GPIO.IN)
 
-ser = serial.Serial('/dev/ttyACM1', 9600)
-time.sleep(1)
+def get_connection_port():
+    ser = ''
+    for i in range(3):
+        try:
+            ser = serial.Serial(f'/dev/ttyACM{i}', 9600)
+        except Exception as ex:
+            pass
+            
+    return ser
 
 
 def sendFeed(str1, str2, str3, str4):
@@ -59,25 +67,35 @@ def sendFeed(str1, str2, str3, str4):
 
 def loop():
     try:
-        temperature_c = dht_sensor.temperature
-        humidity_value = dht_sensor.humidity
+        ser = get_connection_port()
+        
+        if (ser):
+            temperature_c = dht_sensor.temperature
+            humidity_value = dht_sensor.humidity
 
-        print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
+#             print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
 
-        print(GPIO.input(BG_PIN))
+            #print(GPIO.input(BG_PIN))
 
-        line = ser.readline()
-        msg = line.decode()
-        values = msg.split(":")
+            line = ser.readline()
+            msg = line.decode()
+            values = msg.split(":")
 
-        brightness_value = values[0]
-        moisture_value = values[1]
+            brightness_value = values[0]
+            moisture_value = values[1]
+            try:
+                moisture_percentage = (int(moisture_value) / 65535) * 100
+                
+                print("Moisture: ", moisture_percentage)
+                
+            except Exception as ex:
+                print(ex)
 
-        sendFeed(temperature_c, humidity_value, brightness_value, moisture_value)
+            #sendFeed(temperature_c, humidity_value, brightness_value, moisture_value)
     except:
-        pass
+        print("something went wrong")
 
-    time.sleep(5)
+    #time.sleep(4)
 
 
 # send data to dashboard
