@@ -5,6 +5,10 @@ import serial
 import board
 from Adafruit_IO import Client, Feed, RequestError
 import adafruit_dht
+import tm1637
+import threading
+
+tm = tm1637.TM1637(clk=21, dio=20)
 
 # Set to your Adafruit IO key.
 # Remember, your key is a secret,
@@ -40,12 +44,25 @@ try: # if we have a 'moisture' feed
 except RequestError: # create a moisture feed
     feed4 = Feed(name="moisture")
     moisture = aio.create_feed(feed4)
+    
+try:  # if we have a 'temperature' feed
+    toggle = aio.feeds('toggle')
+except RequestError:  # create a temperature feed
+    feed5 = Feed(name="toggle")
+    toggle = aio.create_feed(feed5)
 
 # GPIO Mode (BOARD / BCM)
 dht_sensor = adafruit_dht.DHT11(board.D4, use_pulseio=False)
 
 BG_PIN = 17
 GPIO.setup(BG_PIN, GPIO.IN)
+air_value = 57390
+water_value = 31500
+soil_moisture_value = 0
+soil_moisture_percecntage = 0
+
+RELAY_PIN = 26
+GPIO.setup(RELAY_PIN, GPIO.OUT)
 
 def get_connection_port():
     ser = ''
@@ -63,41 +80,60 @@ def sendFeed(str1, str2, str3, str4):
     aio.send(humidity.key, str2)
     aio.send(brightness.key, str3)
     aio.send(moisture.key, str4)
+    
+def get_percentage(x, in_min, in_max, out_min, out_max):
+    return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
+def send_feed_in_time_interval():
+    temperature_c = dht_sensor.temperature
+    humidity_value = dht_sensor.humidity
+    tm.temperature(temperature_c)
+    print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
 
-def loop():
     try:
         ser = get_connection_port()
         
         if (ser):
-            temperature_c = dht_sensor.temperature
-            humidity_value = dht_sensor.humidity
-
-#             print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
-
-            #print(GPIO.input(BG_PIN))
-
             line = ser.readline()
             msg = line.decode()
             values = msg.split(":")
 
             brightness_value = values[0]
-            moisture_value = values[1]
-            try:
-                moisture_percentage = (int(moisture_value) / 65535) * 100
-                
-                print("Moisture: ", moisture_percentage)
-                
-            except Exception as ex:
-                print(ex)
+            soil_moisture_value = int(values[1])
+            soil_moisture_percentage = get_percentage(
+                soil_moisture_value,
+                air_value,
+                water_value,
+                0,
+                100
+            )
+            
+            print("Soil Moisture Value", soil_moisture_value)
+            print("Soil Moisture", soil_moisture_percentage)
 
-            #sendFeed(temperature_c, humidity_value, brightness_value, moisture_value)
+
+            sendFeed(temperature_c, humidity_value, brightness_value, soil_moisture_percentage)
     except:
         print("something went wrong")
+        
+    time.sleep(8)
+    
+    threading.Thread(target=send_feed_in_time_interval).start()
+    
 
-    #time.sleep(4)
-
+def loop():
+    water_toggle = aio.receive(toggle.key)
+    
+    if water_toggle.value == "ON":
+        GPIO.output(RELAY_PIN, GPIO.HIGH)
+    else:
+        GPIO.output(RELAY_PIN, GPIO.LOW)
+    
+        
+    
+threading.Thread(target=send_feed_in_time_interval).start()
 
 # send data to dashboard
 while True:
     loop()
+    
