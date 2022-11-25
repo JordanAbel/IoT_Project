@@ -50,6 +50,12 @@ except RequestError:  # create a temperature feed
     feed5 = Feed(name="toggle")
     toggle = aio.create_feed(feed5)
 
+try:  # if we have a 'temperature' feed
+    display = aio.feeds('a3')
+except RequestError:  # create a temperature feed
+    feed6 = Feed(name="a3")
+    display = aio.create_feed(feed6)
+    
 # GPIO Mode (BOARD / BCM)
 dht_sensor = adafruit_dht.DHT11(board.D4, use_pulseio=False)
 
@@ -57,13 +63,15 @@ BG_PIN = 17
 GPIO.setup(BG_PIN, GPIO.IN)
 air_value = 57390
 water_value = 31500
+darkness_value = 2000
+full_light_value = 64000
 
 RELAY_PIN = 26
 GPIO.setup(RELAY_PIN, GPIO.OUT)
 
 temperature_c = None
 humidity_value = None
-brightness_value = None
+brightness_percentage = None
 soil_moisture_percentage = None
 
 
@@ -85,8 +93,8 @@ def send_feed():
     if humidity_value is not None:
         aio.send(humidity.key, humidity_value)
 
-    if brightness_value is not None:
-        aio.send(brightness.key, brightness_value)
+    if brightness_percentage is not None:
+        aio.send(brightness.key, brightness_percentage)
 
     if soil_moisture_percentage is not None:
         aio.send(moisture.key, soil_moisture_percentage)
@@ -104,7 +112,7 @@ def send_feed_in_time_interval():
 
 def loop():
     water_toggle = aio.receive(toggle.key)
-    display_option = 0
+    display_option = aio.receive(display.key).value
 
     if water_toggle.value == "ON":
         GPIO.output(RELAY_PIN, GPIO.HIGH)
@@ -113,18 +121,21 @@ def loop():
 
     global temperature_c
     global humidity_value
-    global brightness_value
+    global brightness_percentage
     global soil_moisture_percentage
 
-    temperature_c = dht_sensor.temperature
-    humidity_value = dht_sensor.humidity
+    try: 
+        temperature_c = dht_sensor.temperature
+        humidity_value = dht_sensor.humidity
 
-    print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
+        print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
 
-    if display_option == 0:
-        tm.temperature(temperature_c)
-    elif display_option == 10:
-        tm.number(humidity)
+        if display_option == "0":
+            tm.temperature(temperature_c)
+        elif display_option == "10":
+            tm.number(humidity_value)
+    except:
+        pass
 
     try:  # Attempt to get values from pico connection
         ser = get_connection_port()
@@ -143,17 +154,23 @@ def loop():
                 0,
                 100
             )
-
-            # print("Soil Moisture Value", soil_moisture_value)
-            print("Brightness", brightness_value)
+            brightness_percentage = get_percentage(
+                int(brightness_value),
+                darkness_value,
+                full_light_value,
+                0,
+                100
+            )
+            
+            print("Brightness", brightness_percentage)
             print("Soil Moisture", soil_moisture_percentage)
 
-            if display_option == 20:
-                tm.scroll(brightness_value, delay=500)
-            elif display_option == 30:
+            if display_option == "20":
+                tm.number(brightness_percentage)
+            elif display_option == "30":
                 tm.number(soil_moisture_percentage)
-    except:
-        print("something went wrong: soil moisture and brightness values not updated")
+    except Exception as ex:
+        print(ex)
 
 
 threading.Thread(target=send_feed_in_time_interval).start()
