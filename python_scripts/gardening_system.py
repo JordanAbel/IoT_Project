@@ -66,9 +66,10 @@ humidity_value = None
 brightness_value = None
 soil_moisture_percentage = None
 
+
 def get_connection_port():
     ser = ''
-    for i in range(3):
+    for i in range(3):  # Try different addresses to find where pico is connected
         try:
             ser = serial.Serial(f'/dev/ttyACM{i}', 9600)
         except Exception as ex:
@@ -103,6 +104,7 @@ def send_feed_in_time_interval():
 
 def loop():
     water_toggle = aio.receive(toggle.key)
+    display_option = 0
 
     if water_toggle.value == "ON":
         GPIO.output(RELAY_PIN, GPIO.HIGH)
@@ -116,10 +118,15 @@ def loop():
 
     temperature_c = dht_sensor.temperature
     humidity_value = dht_sensor.humidity
-    tm.temperature(temperature_c)
+
     print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
 
-    try:
+    if display_option == 0:
+        tm.temperature(temperature_c)
+    elif display_option == 10:
+        tm.number(humidity)
+
+    try:  # Attempt to get values from pico connection
         ser = get_connection_port()
 
         if ser:
@@ -140,6 +147,11 @@ def loop():
             # print("Soil Moisture Value", soil_moisture_value)
             print("Brightness", brightness_value)
             print("Soil Moisture", soil_moisture_percentage)
+
+            if display_option == 20:
+                tm.scroll(brightness_value, delay=500)
+            elif display_option == 30:
+                tm.number(soil_moisture_percentage)
     except:
         print("something went wrong: soil moisture and brightness values not updated")
 
