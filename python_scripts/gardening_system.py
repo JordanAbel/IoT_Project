@@ -20,7 +20,6 @@ ADAFRUIT_IO_USERNAME = 'curtishallman'
 # Create an instance of the REST client.
 aio = Client(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
 
-
 try:  # if we have a 'temperature' feed
     temperature = aio.feeds('temperature')
 except RequestError:  # create a temperature feed
@@ -33,18 +32,18 @@ except RequestError:  # create a humidity feed
     feed2 = Feed(name="humidity")
     humidity = aio.create_feed(feed2)
 
-try: # if we have a 'brightness' feed
+try:  # if we have a 'brightness' feed
     brightness = aio.feeds('brightness')
-except RequestError: # create a brightness feed
+except RequestError:  # create a brightness feed
     feed3 = Feed(name="brightness")
     brightness = aio.create_feed(feed3)
 
-try: # if we have a 'moisture' feed
+try:  # if we have a 'moisture' feed
     moisture = aio.feeds('moisture')
-except RequestError: # create a moisture feed
+except RequestError:  # create a moisture feed
     feed4 = Feed(name="moisture")
     moisture = aio.create_feed(feed4)
-    
+
 try:  # if we have a 'temperature' feed
     toggle = aio.feeds('toggle')
 except RequestError:  # create a temperature feed
@@ -58,11 +57,14 @@ BG_PIN = 17
 GPIO.setup(BG_PIN, GPIO.IN)
 air_value = 57390
 water_value = 31500
-soil_moisture_value = 0
-soil_moisture_percecntage = 0
 
 RELAY_PIN = 26
 GPIO.setup(RELAY_PIN, GPIO.OUT)
+
+temperature_c = None
+humidity_value = None
+brightness_value = None
+soil_moisture_percentage = None
 
 def get_connection_port():
     ser = ''
@@ -71,20 +73,47 @@ def get_connection_port():
             ser = serial.Serial(f'/dev/ttyACM{i}', 9600)
         except Exception as ex:
             pass
-            
+
     return ser
 
 
-def sendFeed(str1, str2, str3, str4):
-    aio.send(temperature.key, str1)
-    aio.send(humidity.key, str2)
-    aio.send(brightness.key, str3)
-    aio.send(moisture.key, str4)
-    
+def send_feed():
+    if temperature_c is not None:
+        aio.send(temperature.key, temperature_c)
+
+    if humidity_value is not None:
+        aio.send(humidity.key, humidity_value)
+
+    if brightness_value is not None:
+        aio.send(brightness.key, brightness_value)
+
+    if soil_moisture_percentage is not None:
+        aio.send(moisture.key, soil_moisture_percentage)
+
+
 def get_percentage(x, in_min, in_max, out_min, out_max):
     return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
 
+
 def send_feed_in_time_interval():
+    send_feed()
+    time.sleep(8)
+    threading.Thread(target=send_feed_in_time_interval).start()
+
+
+def loop():
+    water_toggle = aio.receive(toggle.key)
+
+    if water_toggle.value == "ON":
+        GPIO.output(RELAY_PIN, GPIO.HIGH)
+    else:
+        GPIO.output(RELAY_PIN, GPIO.LOW)
+
+    global temperature_c
+    global humidity_value
+    global brightness_value
+    global soil_moisture_percentage
+
     temperature_c = dht_sensor.temperature
     humidity_value = dht_sensor.humidity
     tm.temperature(temperature_c)
@@ -92,8 +121,8 @@ def send_feed_in_time_interval():
 
     try:
         ser = get_connection_port()
-        
-        if (ser):
+
+        if ser:
             line = ser.readline()
             msg = line.decode()
             values = msg.split(":")
@@ -107,33 +136,16 @@ def send_feed_in_time_interval():
                 0,
                 100
             )
-            
-            print("Soil Moisture Value", soil_moisture_value)
+
+            # print("Soil Moisture Value", soil_moisture_value)
+            print("Brightness", brightness_value)
             print("Soil Moisture", soil_moisture_percentage)
-
-
-            sendFeed(temperature_c, humidity_value, brightness_value, soil_moisture_percentage)
     except:
-        print("something went wrong")
-        
-    time.sleep(8)
-    
-    threading.Thread(target=send_feed_in_time_interval).start()
-    
+        print("something went wrong: soil moisture and brightness values not updated")
 
-def loop():
-    water_toggle = aio.receive(toggle.key)
-    
-    if water_toggle.value == "ON":
-        GPIO.output(RELAY_PIN, GPIO.HIGH)
-    else:
-        GPIO.output(RELAY_PIN, GPIO.LOW)
-    
-        
-    
+
 threading.Thread(target=send_feed_in_time_interval).start()
 
 # send data to dashboard
 while True:
     loop()
-    
