@@ -20,41 +20,47 @@ ADAFRUIT_IO_USERNAME = 'curtishallman'
 # Create an instance of the REST client.
 aio = Client(ADAFRUIT_IO_USERNAME, ADAFRUIT_IO_KEY)
 
-try:  # if we have a 'temperature' feed
+try:
     temperature = aio.feeds('temperature')
-except RequestError:  # create a temperature feed
+except RequestError:
     feed = Feed(name="temperature")
     temperature = aio.create_feed(feed)
 
-try:  # if we have a 'humidity' feed
+try:
     humidity = aio.feeds('humidity')
-except RequestError:  # create a humidity feed
+except RequestError:
     feed2 = Feed(name="humidity")
     humidity = aio.create_feed(feed2)
 
-try:  # if we have a 'brightness' feed
+try:
     brightness = aio.feeds('brightness')
-except RequestError:  # create a brightness feed
+except RequestError:
     feed3 = Feed(name="brightness")
     brightness = aio.create_feed(feed3)
 
-try:  # if we have a 'moisture' feed
+try:
     moisture = aio.feeds('moisture')
-except RequestError:  # create a moisture feed
+except RequestError:
     feed4 = Feed(name="moisture")
     moisture = aio.create_feed(feed4)
 
-try:  # if we have a 'temperature' feed
+try:
     toggle = aio.feeds('toggle')
-except RequestError:  # create a temperature feed
+except RequestError:
     feed5 = Feed(name="toggle")
     toggle = aio.create_feed(feed5)
 
-try:  # if we have a 'temperature' feed
+try:
     display = aio.feeds('a3')
-except RequestError:  # create a temperature feed
+except RequestError:
     feed6 = Feed(name="a3")
     display = aio.create_feed(feed6)
+    
+try:
+    display_choice = aio.feeds('display-choice')
+except RequestError:
+    feed7 = Feed(name="display-choice")
+    display_choice = aio.create_feed(feed7)
     
 # GPIO Mode (BOARD / BCM)
 dht_sensor = adafruit_dht.DHT11(board.D4, use_pulseio=False)
@@ -98,10 +104,22 @@ def send_feed():
 
     if soil_moisture_percentage is not None:
         aio.send(moisture.key, soil_moisture_percentage)
+        
+        if soil_moisture_percentage < 10:
+            GPIO.output(RELAY_PIN, GPIO.HIGH)
+            time.sleep(3)
+            GPIO.output(RELAY_PIN, GPIO.LOW)
 
 
 def get_percentage(x, in_min, in_max, out_min, out_max):
-    return int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
+    percentage = int((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
+    
+    if percentage > 100:
+        percentage = 100
+    if percentage < 0:
+        percentage = 0
+    
+    return percentage
 
 
 def send_feed_in_time_interval():
@@ -128,7 +146,7 @@ def loop():
         temperature_c = dht_sensor.temperature
         humidity_value = dht_sensor.humidity
 
-        print("Temp={0:0.1f}C Humidity={1:0.1f}%".format(temperature_c, humidity_value))
+        print("Temp = {0:0.1f}C Humidity = {1:0.1f}%".format(temperature_c, humidity_value))
 
         if display_option == "0":
             tm.temperature(temperature_c)
@@ -162,8 +180,8 @@ def loop():
                 100
             )
             
-            print("Brightness", brightness_percentage)
-            print("Soil Moisture", soil_moisture_percentage)
+            print(f"Brightness = {brightness_percentage}%")
+            print(f"Soil Moisture = {soil_moisture_percentage}%")
 
             if display_option == "20":
                 tm.number(brightness_percentage)
@@ -178,3 +196,4 @@ threading.Thread(target=send_feed_in_time_interval).start()
 # send data to dashboard
 while True:
     loop()
+    print("")
